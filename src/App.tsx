@@ -5,7 +5,6 @@ import './App.css';
 interface Container {
   name: string;
   status: string;
-  url?: string;
 }
 
 interface ChatMessage {
@@ -21,7 +20,6 @@ const QUICK_LINKS = [
   { label: 'Supabase Studio', url: 'https://admin-db.y2kgroup.cloud', icon: '🗄️', desc: 'Database Manager' },
 ];
 
-// Mock container data (in production, this would call your VPS API)
 const CONTAINERS: Container[] = [
   { name: 'portainer', status: 'running' },
   { name: 'npm', status: 'running' },
@@ -31,7 +29,37 @@ const CONTAINERS: Container[] = [
   { name: 'Supabase-VPS-Admin-meta', status: 'running' },
 ];
 
+// Allowed users
+const ALLOWED_USERS = ['yosi.nuri@y2kgroupit.com'];
+
+function LoginScreen({ onLogin }: { onLogin: (email: string, pass: string) => boolean }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleLogin = () => {
+    const ok = onLogin(email, password);
+    if (!ok) setError('Invalid email or password.');
+  };
+
+  return (
+    <div className="login-screen">
+      <div className="login-box">
+        <div className="login-logo">⚡ Y2K Group</div>
+        <div className="login-title">Server Management Dashboard</div>
+        <div className="login-subtitle">Sign in to continue</div>
+        <input className="login-input" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+        <input className="login-input" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+        {error && <div className="login-error">{error}</div>}
+        <button className="login-btn" onClick={handleLogin}>Sign In →</button>
+        <div className="login-note">Access restricted to Y2K Group members only.</div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { role: 'assistant', text: 'Hello Yosi! I am David, your Y2K Group assistant. How can I help you today?', time: new Date().toLocaleTimeString() }
   ]);
@@ -39,12 +67,19 @@ function App() {
   const [chatMode, setChatMode] = useState<'chat' | 'embed'>('chat');
   const [activeTab, setActiveTab] = useState<'dashboard' | 'chat'>('dashboard');
 
+  const handleLogin = (email: string, pass: string): boolean => {
+    if (ALLOWED_USERS.includes(email.toLowerCase()) && pass === '+NimUv.uO4K3Wr;&DR&6') {
+      setIsLoggedIn(true);
+      return true;
+    }
+    return false;
+  };
+
   const sendMessage = () => {
     if (!chatInput.trim()) return;
     const userMsg: ChatMessage = { role: 'user', text: chatInput, time: new Date().toLocaleTimeString() };
     setChatMessages(prev => [...prev, userMsg]);
     setChatInput('');
-    // Simulate response (in production, call OpenClaw API)
     setTimeout(() => {
       const reply: ChatMessage = {
         role: 'assistant',
@@ -55,9 +90,10 @@ function App() {
     }, 800);
   };
 
+  if (!isLoggedIn) return <LoginScreen onLogin={handleLogin} />;
+
   return (
     <div className="app">
-      {/* Header */}
       <header className="header">
         <div className="header-left">
           <span className="logo">⚡ Y2K Group</span>
@@ -65,19 +101,17 @@ function App() {
         </div>
         <div className="header-right">
           <span className="user-badge">👤 Yosi Nuri</span>
+          <button className="logout-btn" onClick={() => setIsLoggedIn(false)}>Sign Out</button>
         </div>
       </header>
 
-      {/* Nav Tabs */}
       <nav className="nav-tabs">
         <button className={activeTab === 'dashboard' ? 'tab active' : 'tab'} onClick={() => setActiveTab('dashboard')}>📊 Dashboard</button>
         <button className={activeTab === 'chat' ? 'tab active' : 'tab'} onClick={() => setActiveTab('chat')}>💬 Chat with David</button>
       </nav>
 
-      {/* Dashboard Tab */}
       {activeTab === 'dashboard' && (
         <main className="main">
-          {/* Quick Links */}
           <section className="section">
             <h2>🔗 Quick Access</h2>
             <div className="cards">
@@ -94,7 +128,6 @@ function App() {
             </div>
           </section>
 
-          {/* Container Status */}
           <section className="section">
             <h2>🐳 Container Status — server-management Stack</h2>
             <div className="container-list">
@@ -108,41 +141,25 @@ function App() {
             </div>
           </section>
 
-          {/* Server Info */}
           <section className="section">
             <h2>🖥️ Server Info</h2>
             <div className="cards">
-              <div className="card info-card">
-                <div className="card-title">VPS IP</div>
-                <div className="card-value">76.13.98.118</div>
-              </div>
-              <div className="card info-card">
-                <div className="card-title">Domain</div>
-                <div className="card-value">y2kgroup.cloud</div>
-              </div>
-              <div className="card info-card">
-                <div className="card-title">Stack</div>
-                <div className="card-value">server-management</div>
-              </div>
-              <div className="card info-card">
-                <div className="card-title">SSL</div>
-                <div className="card-value">✅ Active</div>
-              </div>
+              <div className="card info-card"><div className="card-title">VPS IP</div><div className="card-value">76.13.98.118</div></div>
+              <div className="card info-card"><div className="card-title">Domain</div><div className="card-value">y2kgroup.cloud</div></div>
+              <div className="card info-card"><div className="card-title">Stack</div><div className="card-value">server-management</div></div>
+              <div className="card info-card"><div className="card-title">SSL</div><div className="card-value">✅ Active</div></div>
             </div>
           </section>
         </main>
       )}
 
-      {/* Chat Tab */}
       {activeTab === 'chat' && (
         <main className="main chat-main">
-          {/* Chat Mode Toggle */}
           <div className="chat-mode-toggle">
             <button className={chatMode === 'chat' ? 'mode-btn active' : 'mode-btn'} onClick={() => setChatMode('chat')}>💬 Quick Chat</button>
             <button className={chatMode === 'embed' ? 'mode-btn active' : 'mode-btn'} onClick={() => setChatMode('embed')}>🖥️ Full OpenClaw UI</button>
           </div>
 
-          {/* Quick Chat */}
           {chatMode === 'chat' && (
             <div className="chat-container">
               <div className="chat-messages">
@@ -157,27 +174,15 @@ function App() {
                 ))}
               </div>
               <div className="chat-input-row">
-                <input
-                  className="chat-input"
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && sendMessage()}
-                  placeholder="Type a message to David..."
-                />
+                <input className="chat-input" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Type a message to David..." />
                 <button className="send-btn" onClick={sendMessage}>Send ➤</button>
               </div>
             </div>
           )}
 
-          {/* Full OpenClaw Embed */}
           {chatMode === 'embed' && (
             <div className="embed-container">
-              <iframe
-                src="https://76.13.98.118"
-                title="OpenClaw Control UI"
-                className="openclaw-embed"
-                allow="microphone"
-              />
+              <iframe src="https://76.13.98.118" title="OpenClaw Control UI" className="openclaw-embed" allow="microphone" />
             </div>
           )}
         </main>
