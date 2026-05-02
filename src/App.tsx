@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginScreen from './components/LoginScreen';
@@ -51,14 +51,7 @@ const Dashboard: React.FC = () => {
   const [userMsg, setUserMsg] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
 
-  useEffect(() => {
-    if (isAdmin && activeTab === 'users') {
-      loadUsers();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }
-  }, [activeTab, isAdmin]);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     if (!isAdmin) return;
 
     setLoadingUsers(true);
@@ -84,7 +77,13 @@ const Dashboard: React.FC = () => {
     } finally {
       setLoadingUsers(false);
     }
-  };
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin && activeTab === 'users') {
+      loadUsers();
+    }
+  }, [activeTab, isAdmin, loadUsers]);
 
   const updateUserRole = async (userId: string, newRole: string) => {
     try {
