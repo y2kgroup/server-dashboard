@@ -1,28 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import LoginScreen from './components/LoginScreen';
 import './App.css';
 
 // Types
-interface User {
-  id: string;
-  email: string;
-  role: string;
-  created_at: string;
-  is_active: boolean;
-}
-
 interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   time: string;
 }
 
-const SUPABASE_URL = 'https://api.y2kgroup.cloud';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNjEzNTMxOTg1LCJleHAiOjE5MjkxMDc5ODV9.th84OKK0Hwa4Xws8SwlyoSD7ROqS4_z8hL91qJr6few';
+interface SupabaseUser {
+  id: string;
+  email: string;
+  user_metadata: {
+    role?: string;
+    [key: string]: any;
+  };
+  created_at: string;
+}
 
 const QUICK_LINKS = [
   { label: 'Portainer', url: 'https://76.13.98.118:9443', icon: '🐳', desc: 'Docker Manager' },
   { label: 'Nginx Proxy Manager', url: 'http://76.13.98.118:81', icon: '🔀', desc: 'Subdomain & SSL' },
-  { label: 'Supabase Studio', url: 'https://admin-db.y2kgroup.cloud', icon: '🗄️', desc: 'Database Manager' },
+  { label: 'Supabase Studio', url: `https://admin-db.y2khost.com`, icon: '🗄️', desc: 'Database Manager' },
 ];
 
 const CONTAINERS = [
@@ -34,108 +36,81 @@ const CONTAINERS = [
   { name: 'Supabase-VPS-Admin-meta', status: 'running' },
 ];
 
-// Simple hash function for demo (in production use proper bcrypt via backend)
-async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function LoginScreen({ onLogin, loading, error }: { onLogin: (e: string, p: string) => void; loading: boolean; error: string }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  return (
-    <div className="login-screen">
-      <div className="login-box">
-        <div className="login-logo">⚡ Y2K Group</div>
-        <div className="login-title">Server Management Dashboard</div>
-        <div className="login-subtitle">Sign in to continue</div>
-        <input className="login-input" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
-        <input className="login-input" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && onLogin(email, password)} />
-        {error && <div className="login-error">{error}</div>}
-        <button className="login-btn" onClick={() => onLogin(email, password)} disabled={loading}>{loading ? 'Signing in...' : 'Sign In →'}</button>
-        <div className="login-note">Access restricted to Y2K Group members only.</div>
-      </div>
-    </div>
-  );
-}
-
-function App() {
-  const [currentUser, setCurrentUser] = useState<{ email: string; role: string } | null>(null);
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState('');
+// Dashboard Component
+const Dashboard: React.FC = () => {
+  const { isAdmin, user, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'users'>('dashboard');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { role: 'assistant', text: 'Hello! I am David, your Y2K Group assistant. How can I help you today?', time: new Date().toLocaleTimeString() }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatMode, setChatMode] = useState<'chat' | 'embed'>('chat');
-  const [users, setUsers] = useState<User[]>([]);
-  const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState('user');
+
+  // User management state
+  const [users, setUsers] = useState<SupabaseUser[]>([]);
   const [userMsg, setUserMsg] = useState('');
-
-  const handleLogin = async (email: string, password: string) => {
-    setLoginLoading(true);
-    setLoginError('');
-    try {
-      // Verify against Supabase auth.users table via REST API
-      const hash = await hashPassword(password);
-      const res = await fetch(`${SUPABASE_URL}/auth/users?email=eq.${encodeURIComponent(email)}&is_active=eq.true&select=email,role`, {
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-      });
-      const data = await res.json();
-      // For initial setup, check against known admin credentials
-      if (email === 'yosi.nuri@y2kgroupit.com' && password === '+NimUv.uO4K3Wr;&DR&6') {
-        setCurrentUser({ email, role: 'admin' });
-      } else if (data && data.length > 0) {
-        setCurrentUser({ email: data[0].email, role: data[0].role });
-      } else {
-        setLoginError('Invalid email or password.');
-      }
-    } catch {
-      setLoginError('Connection error. Please try again.');
-    }
-    setLoginLoading(false);
-  };
-
-  const loadUsers = async () => {
-    try {
-      const res = await fetch(`${SUPABASE_URL}/auth/users?select=id,email,role,created_at,is_active&order=created_at.desc`, {
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-      });
-      const data = await res.json();
-      if (Array.isArray(data)) setUsers(data);
-    } catch { setUsers([]); }
-  };
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   useEffect(() => {
-    if (currentUser && activeTab === 'users') loadUsers();
-  }, [activeTab, currentUser]);
+    if (isAdmin && activeTab === 'users') {
+      loadUsers();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }
+  }, [activeTab, isAdmin]);
 
-  const addUser = async () => {
-    if (!newEmail || !newPassword) { setUserMsg('Email and password required.'); return; }
-    const hash = await hashPassword(newPassword);
-    const res = await fetch(`${SUPABASE_URL}/auth/users`, {
-      method: 'POST',
-      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-      body: JSON.stringify({ email: newEmail, password_hash: hash, role: newRole })
-    });
-    if (res.ok) { setUserMsg(`✅ User ${newEmail} created.`); setNewEmail(''); setNewPassword(''); loadUsers(); }
-    else { setUserMsg('❌ Failed to create user. Email may already exist.'); }
+  const loadUsers = async () => {
+    if (!isAdmin) return;
+
+    setLoadingUsers(true);
+    try {
+      // Note: This requires the service_role key to list all users
+      // For now, we'll show a message about admin requirements
+      const response = await fetch('https://api.y2khost.com/auth/v1/admin/users', {
+        headers: {
+          'apikey': process.env.REACT_APP_SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNjEzNTMxOTg1LCJleHAiOjE5MjkxMDc5ODV9.th84OKK0Hwa4Xws8SwlyoSD7ROqS4_z8hL91qJr6few',
+          'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNjEzNTMxOTg1LCJleHAiOjE5MjkxMDc5ODV9.th84OKK0Hwa4Xws8SwlyoSD7ROqS4_z8hL91qJr6few'}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data.users || []);
+      } else {
+        setUserMsg('⚠️ Admin access requires service role permissions');
+      }
+    } catch (error) {
+      console.error('Error loading users:', error);
+      setUserMsg('❌ Failed to load users. Check console for details.');
+    } finally {
+      setLoadingUsers(false);
+    }
   };
 
-  const removeUser = async (id: string, email: string) => {
-    if (email === 'yosi.nuri@y2kgroupit.com') { setUserMsg('❌ Cannot remove admin account.'); return; }
-    const res = await fetch(`${SUPABASE_URL}/auth/users?id=eq.${id}`, {
-      method: 'DELETE',
-      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-    });
-    if (res.ok) { setUserMsg(`✅ User ${email} removed.`); loadUsers(); }
-    else setUserMsg('❌ Failed to remove user.');
+  const updateUserRole = async (userId: string, newRole: string) => {
+    try {
+      const serviceKey = process.env.REACT_APP_SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNjEzNTMxOTg1LCJleHAiOjE5MjkxMDc5ODV9.th84OKK0Hwa4Xws8SwlyoSD7ROqS4_z8hL91qJr6few';
+      const response = await fetch(`https://api.y2khost.com/auth/v1/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'apikey': serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_metadata: { role: newRole }
+        })
+      });
+
+      if (response.ok) {
+        setUserMsg(`✅ User role updated to ${newRole}`);
+        loadUsers();
+      } else {
+        setUserMsg('❌ Failed to update user role');
+      }
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      setUserMsg('❌ Failed to update user role');
+    }
   };
 
   const sendMessage = () => {
@@ -145,7 +120,7 @@ function App() {
     setTimeout(() => setChatMessages(prev => [...prev, { role: 'assistant', text: 'I received your message. To enable full AI responses, the OpenClaw API integration needs to be configured.', time: new Date().toLocaleTimeString() }]), 800);
   };
 
-  if (!currentUser) return <LoginScreen onLogin={handleLogin} loading={loginLoading} error={loginError} />;
+  if (!user) return null;
 
   return (
     <div className="app">
@@ -155,15 +130,16 @@ function App() {
           <span className="subtitle">Server Management Dashboard</span>
         </div>
         <div className="header-right">
-          <span className="user-badge">👤 {currentUser.email}</span>
-          <button className="logout-btn" onClick={() => setCurrentUser(null)}>Sign Out</button>
+          <span className="user-badge">👤 {user.email}</span>
+          <span className={`role-badge ${isAdmin ? 'admin' : 'user'}`}>{isAdmin ? 'Admin' : 'User'}</span>
+          <button className="logout-btn" onClick={() => signOut()}>Sign Out</button>
         </div>
       </header>
 
       <nav className="nav-tabs">
         <button className={activeTab === 'dashboard' ? 'tab active' : 'tab'} onClick={() => setActiveTab('dashboard')}>📊 Dashboard</button>
         <button className={activeTab === 'chat' ? 'tab active' : 'tab'} onClick={() => setActiveTab('chat')}>💬 Chat with David</button>
-        {currentUser.role === 'admin' && <button className={activeTab === 'users' ? 'tab active' : 'tab'} onClick={() => setActiveTab('users')}>👥 User Management</button>}
+        {isAdmin && <button className={activeTab === 'users' ? 'tab active' : 'tab'} onClick={() => setActiveTab('users')}>👥 User Management</button>}
       </nav>
 
       {activeTab === 'dashboard' && (
@@ -196,7 +172,7 @@ function App() {
             <h2>🖥️ Server Info</h2>
             <div className="cards">
               <div className="card info-card"><div className="card-title">VPS IP</div><div className="card-value">76.13.98.118</div></div>
-              <div className="card info-card"><div className="card-title">Domain</div><div className="card-value">y2kgroup.cloud</div></div>
+              <div className="card info-card"><div className="card-title">Domain</div><div className="card-value">y2khost.com</div></div>
               <div className="card info-card"><div className="card-title">Stack</div><div className="card-value">server-management</div></div>
               <div className="card info-card"><div className="card-title">SSL</div><div className="card-value">✅ Active</div></div>
             </div>
@@ -237,36 +213,121 @@ function App() {
         </main>
       )}
 
-      {activeTab === 'users' && (
+      {activeTab === 'users' && isAdmin && (
         <main className="main">
           <section className="section">
             <h2>👥 User Management</h2>
-            <div className="user-form">
-              <input className="login-input" type="email" placeholder="Email" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
-              <input className="login-input" type="password" placeholder="Password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-              <select className="login-input" value={newRole} onChange={e => setNewRole(e.target.value)}>
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-              </select>
-              <button className="login-btn" onClick={addUser}>➕ Add User</button>
+            <div className="user-info">
+              <div className="info-text">
+                Users are managed through Supabase Auth. Use the interface below to update user roles.
+                All users can sign in with Google SSO. Admin users have access to user management.
+              </div>
             </div>
             {userMsg && <div className="user-msg">{userMsg}</div>}
-            <div className="container-list" style={{marginTop: '16px'}}>
-              {users.length === 0 && <div className="container-item" style={{color:'#64748b'}}>No users found or loading...</div>}
-              {users.map(u => (
-                <div key={u.id} className="container-item">
-                  <span className={`status-dot ${u.is_active ? 'green' : 'red'}`}></span>
-                  <span className="container-name">{u.email}</span>
-                  <span className="status-badge running">{u.role}</span>
-                  <button className="remove-btn" onClick={() => removeUser(u.id, u.email)}>🗑️ Remove</button>
-                </div>
-              ))}
-            </div>
+            {loadingUsers ? (
+              <div className="loading">Loading users...</div>
+            ) : (
+              <div className="container-list" style={{ marginTop: '16px' }}>
+                {users.length === 0 && (
+                  <div className="container-item" style={{ color: '#64748b' }}>
+                    No users found or admin permissions not configured.
+                  </div>
+                )}
+                {users.map(u => (
+                  <div key={u.id} className="container-item">
+                    <span className="status-dot green"></span>
+                    <span className="container-name">{u.email}</span>
+                    <span className={`status-badge ${u.user_metadata?.role === 'admin' ? 'admin' : 'running'}`}>
+                      {u.user_metadata?.role || 'user'}
+                    </span>
+                    {u.email !== user?.email && (
+                      <select
+                        className="role-select"
+                        value={u.user_metadata?.role || 'user'}
+                        onChange={(e) => updateUserRole(u.id, e.target.value)}
+                      >
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </main>
       )}
     </div>
   );
-}
+};
+
+// Login Page Component
+const LoginPage: React.FC = () => {
+  const { signInWithGoogle, loading } = useAuth();
+  const [error, setError] = useState('');
+
+  const handleSignIn = async () => {
+    setError('');
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      setError('Failed to sign in with Google. Please try again.');
+    }
+  };
+
+  return <LoginScreen onSignIn={handleSignIn} loading={loading} error={error} />;
+};
+
+// Protected Route Component
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        fontSize: '18px',
+        color: '#64748b'
+      }}>
+        Loading...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// Main App Component
+const AppContent: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<ProtectedRoute><Navigate to="/" replace /></ProtectedRoute>} />
+        <Route path="/" element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } />
+      </Routes>
+    </BrowserRouter>
+  );
+};
+
+// Wrap with AuthProvider
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+};
 
 export default App;
