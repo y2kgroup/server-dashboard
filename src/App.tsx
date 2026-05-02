@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginScreen from './components/LoginScreen';
+import AuthCallback from './pages/AuthCallback';
 import './App.css';
 
 // Types
@@ -309,7 +310,7 @@ const AppContent: React.FC = () => {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/auth/callback" element={<ProtectedRoute><Navigate to="/" replace /></ProtectedRoute>} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/" element={
           <ProtectedRoute>
             <Dashboard />
